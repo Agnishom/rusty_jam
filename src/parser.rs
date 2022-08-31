@@ -4,55 +4,7 @@ extern crate nom;
 
 use nom::*;
 
-#[derive(Debug, PartialEq, Clone)]
-pub struct Tokens {
-    pub tokens: Vec<Token>,
-}
 
-impl Tokens {
-    pub fn new(tokens: Vec<Token>) -> Tokens {
-        Tokens { tokens }
-    }
-}
-
-impl InputLength for Tokens {
-    fn input_len(&self) -> usize {
-        self.tokens.len()
-    }
-}
-
-impl InputTake for Tokens{
-    fn take(&self, count: usize) -> Self {
-        Tokens {
-            tokens: self.tokens.iter().take(count).cloned().collect(),
-        }
-    }
-    fn take_split(&self, count: usize) -> (Self, Self) {
-        let (left, right) = self.tokens.split_at(count);
-        (Tokens { tokens: left.to_vec() }, Tokens { tokens: right.to_vec() })
-    }
-}
-
-pub fn anytoken(input: Tokens) -> IResult<Tokens, Token> {
-    if input.tokens.is_empty() {
-        Err(Err::Error(nom::error::Error::new(input, nom::error::ErrorKind::Eof)))
-    } else {
-        let first = input.tokens[0].clone();
-        let rest = input.tokens.into_iter().skip(1).collect();
-        Ok((Tokens::new(rest), first))
-    }
-}
-
-pub fn tokensat(pred: &dyn Fn(&Token) -> bool) -> impl Fn(Tokens) -> IResult<Tokens, Token> + '_ {
-    move |input: Tokens| {
-        let parse_res = anytoken(input.clone())?;
-        if pred(&(parse_res.1)) {
-            Ok(parse_res)
-        } else {
-            combinator::fail(input)
-        }
-    }
-}
 
 /**
  * IdList      ::= { PropIdList }
@@ -249,10 +201,14 @@ pub fn exp1(input: Tokens) -> IResult<Tokens, AST> {
             let binop = combinator::map(
                 tokensat(& |tk| match tk {
                     Token::BinopTk(_) => true,
+                    Token::OtherOpTk(OtherOp::Plus) => true,
+                    Token::OtherOpTk(OtherOp::Minus) => true,
                     _   => false,
                     }),
                 |tk| match tk {
                     Token::BinopTk(binop) => binop,
+                    Token::OtherOpTk(OtherOp::Plus) => Binop::Add,
+                    Token::OtherOpTk(OtherOp::Minus) => Binop::Sub,
                     _ => panic!("Expected Binop"),
                 }
             // this is probably a bad idea
@@ -262,7 +218,7 @@ pub fn exp1(input: Tokens) -> IResult<Tokens, AST> {
                 Ok((rest, binop)) => {
                     let exp2 = exp(rest);
                     match exp2 {
-                        Ok((rest, exp)) => Ok((rest, AST::BinopApp(binop, Box::new(term), Box::new(exp)))),
+                        Ok((rest2, exp)) => Ok((rest2, AST::BinopApp(binop, Box::new(term), Box::new(exp)))),
                         Err(e) => Err(e),
                     }
                 }
@@ -270,6 +226,44 @@ pub fn exp1(input: Tokens) -> IResult<Tokens, AST> {
             }
         }
         Err(e) => Err(e),
+    }
+}
+
+#[test]
+fn exp1_test1() {
+    let input = "2 + 2";
+    let tokens = tokenizer(input).unwrap().1;
+    let ast = exp1(tokens);
+    assert!(ast.is_ok());
+    match ast{
+        Ok((rest, ast)) => {
+            assert!(rest.tokens.is_empty());
+            assert_eq!(ast, AST::BinopApp(Binop::Add,
+                 Box::new(AST::ConstantTerm(Constant::Int(2))),
+                 Box::new(AST::ConstantTerm(Constant::Int(2)))));
+        }
+        Err(e) => assert!(false, format!("{:?}", e)),
+    }
+}
+
+#[test]
+fn exp1_test2() {
+    let input = "2 + ( 3 + 4 )";
+    let tokens = tokenizer(input).unwrap().1;
+    let ast = exp1(tokens);
+    assert!(ast.is_ok());
+    match ast{
+        Ok((rest, ast)) => {
+            assert!(rest.tokens.is_empty());
+            assert_eq!(ast, AST::BinopApp(Binop::Add,
+                 Box::new(AST::ConstantTerm(Constant::Int(2))),
+                 Box::new(AST::BinopApp(Binop::Add,
+                    Box::new(AST::ConstantTerm(Constant::Int(3))),
+                    Box::new(AST::ConstantTerm(Constant::Int(4)))
+                 ))
+                ));
+        }
+        Err(e) => assert!(false, format!("{:?}", e)),
     }
 }
 
@@ -379,7 +373,7 @@ pub fn parse(input: &str) -> AST{
             if rest.len() > 0 {
                 panic!("Unexpected tokens {:?}", rest);
             }
-            match exp(Tokens::new(tokens)) {
+            match exp(tokens) {
                 Err(e) => panic!("Parsing Failure {:?}", e),
                 Ok((rest, ast)) => {
                     if rest.tokens.len() > 0 {

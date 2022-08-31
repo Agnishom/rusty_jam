@@ -23,37 +23,22 @@ pub enum Constant {
 
 #[derive(Debug, PartialEq, Clone)]
 pub enum Unop {
-    Plus,
-    Minus,
+    Plus, Minus, 
     Not,
 }
 
 #[derive(Debug, PartialEq, Clone)]
 pub enum Binop {
-    Add,
-    Sub,
-    Mul,
-    Div,
-    Eq,
-    Neq,
-    Lt,
-    Gt,
-    Le,
-    Ge,
-    And,
-    Or,
+    Add, Sub, Mul, Div,
+    Eq, Neq,
+    Lt, Gt, Le, Ge,
+    And, Or,
 }
 
 #[derive(Debug, PartialEq, Clone)]
 pub enum Prim {
-    NumberQ,
-    FunctionQ,
-    ListQ,
-    EmptyQ,
-    ConsQ,
-    Cons,
-    First,
-    Rest,
+    NumberQ, FunctionQ, ListQ, EmptyQ, ConsQ,
+    Cons, First, Rest,
     Arity,
 }
 

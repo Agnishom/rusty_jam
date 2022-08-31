@@ -1,13 +1,11 @@
 use crate::ast::*;
 extern crate nom;
 
+use nom::*;
 use nom::{
-    branch::alt,
     bytes::complete::{tag, take_while1, take_while},
     character::complete::*,
     combinator::{map, map_res},
-    error::{context},
-    sequence::{pair},
     multi::*,
     IResult,
 };
@@ -50,9 +48,9 @@ pub enum OtherOp{
  */
 
 pub fn punctuation(input: &str) -> IResult<&str, Punctuation> {
-    context(
+    error::context(
         "punctuation",
-            alt((
+            branch::alt((
                 map(tag("("), |_| Punctuation::LParen),
                 map(tag(")"), |_| Punctuation::RParen),
                 map(tag("{"), |_| Punctuation::LBrace),
@@ -71,9 +69,9 @@ pub fn punctuation(input: &str) -> IResult<&str, Punctuation> {
  */
 
 pub fn keyword(input: &str) -> IResult<&str, Keyword> {
-    context(
+    error::context(
         "Keyword",
-        alt((
+        branch::alt((
                 map(tag("let"), |_| Keyword::Let),
                 map(tag("letcc"), |_| Keyword::LetCC),
                 map(tag("letrec"), |_| Keyword::LetRec),
@@ -92,9 +90,9 @@ pub fn keyword(input: &str) -> IResult<&str, Keyword> {
  */
 
  pub fn prim(input: &str) -> IResult<&str, Prim> {
-    context(
+    error::context(
         "prim",
-        alt((
+        branch::alt((
                 map(tag("number?"), |_| Prim::NumberQ),
                 map(tag("function?"), |_| Prim::FunctionQ),
                 map(tag("list?"), |_| Prim::ListQ),
@@ -113,10 +111,10 @@ pub fn keyword(input: &str) -> IResult<&str, Keyword> {
  */
 
  pub fn bool(input: &str) -> IResult<&str, Constant> {
-    context(
+    error::context(
         "bool",
         
-            alt((
+            branch::alt((
                 map(tag("true"), |_| Constant::Bool(true)),
                 map(tag("false"), |_| Constant::Bool(false)),
             )),
@@ -127,7 +125,7 @@ pub fn keyword(input: &str) -> IResult<&str, Keyword> {
  * Int ::= [0-9]+
  */
  pub fn int(input: &str) -> IResult<&str, Constant> {
-    context(
+    error::context(
         "int",
         map(
             map_res(
@@ -144,9 +142,9 @@ pub fn keyword(input: &str) -> IResult<&str, Keyword> {
  */
 
 pub fn binop(input: &str) -> IResult<&str, Binop> {
-    context(
+    error::context(
         "binop",
-        alt((
+        branch::alt((
                 map(tag("*"), |_| Binop::Mul),
                 map(tag("/"), |_| Binop::Div),
                 map(tag("="), |_| Binop::Eq),
@@ -165,9 +163,9 @@ pub fn binop(input: &str) -> IResult<&str, Binop> {
  * otherop ::= + | - | ~
  */
 pub fn otherop(input: &str) -> IResult<&str, OtherOp> {
-    context(
+    error::context(
         "otherop",
-            alt((
+            branch::alt((
                 map(tag("+"), |_| OtherOp::Plus),
                 map(tag("-"), |_| OtherOp::Minus),
                 map(tag("~"), |_| OtherOp::Not),
@@ -180,10 +178,10 @@ pub fn otherop(input: &str) -> IResult<&str, OtherOp> {
  */
  
 pub fn id(input: &str) -> IResult<&str, Id> {
-    context(
+    error::context(
         "id",
         map(
-            pair(
+            sequence::pair(
                 take_while1(|c : char| c.is_alphabetic()),
                 take_while(|c: char| c.is_alphanumeric() || c == '_' || c == '?'),
             ),
@@ -197,7 +195,7 @@ pub fn id(input: &str) -> IResult<&str, Id> {
  */
 
 pub fn empty(input: &str) -> IResult<&str, Constant> {
-    context(
+    error::context(
         "empty",
         map(tag("empty"), |_| Constant::Empty),
     )(input)
@@ -208,9 +206,9 @@ pub fn empty(input: &str) -> IResult<&str, Constant> {
  */
 
 pub fn token(input: &str) -> IResult<&str, Token> {
-    context(
+    error::context(
         "token",
-            alt((
+            branch::alt((
                 map(punctuation, Token::PunctuationTk),
                 map(keyword, Token::KeywordTk),
                 map(prim, Token::PrimTk),
@@ -230,18 +228,70 @@ pub fn token(input: &str) -> IResult<&str, Token> {
  */
 
 
-pub fn tokenizer(input: &str) -> IResult<&str, Vec<Token>> {
-    context(
+pub fn tokenizer(input: &str) -> IResult<&str, Tokens> {
+    error::context(
         "tokenizer",
         map(
-            many0(
-                alt((
-                    map(token, Some),
-                    map(multispace1, |_| None),
-                ))
-            )
-            , |x| x.into_iter().filter(|x| x.is_some()).map(|x| x.unwrap()).collect()
+            map(
+                many0(
+                    branch::alt((
+                        map(token, Some),
+                        map(multispace1, |_| None),
+                    ))
+                )
+                , |x| x.into_iter().filter(|x| x.is_some()).map(|x| x.unwrap()).collect()
+            ),
+            |v| Tokens { tokens: v }
         )
     )(input)
 }
 
+#[derive(Debug, PartialEq, Clone)]
+pub struct Tokens {
+    pub tokens: Vec<Token>,
+}
+
+impl Tokens {
+    pub fn new(tokens: Vec<Token>) -> Tokens {
+        Tokens { tokens }
+    }
+}
+
+impl InputLength for Tokens {
+    fn input_len(&self) -> usize {
+        self.tokens.len()
+    }
+}
+
+impl InputTake for Tokens{
+    fn take(&self, count: usize) -> Self {
+        Tokens {
+            tokens: self.tokens.iter().take(count).cloned().collect(),
+        }
+    }
+    fn take_split(&self, count: usize) -> (Self, Self) {
+        let (left, right) = self.tokens.split_at(count);
+        (Tokens { tokens: left.to_vec() }, Tokens { tokens: right.to_vec() })
+    }
+}
+
+pub fn anytoken(input: Tokens) -> IResult<Tokens, Token> {
+    if input.tokens.is_empty() {
+        Err(Err::Error(nom::error::Error::new(input, nom::error::ErrorKind::Eof)))
+    } else {
+        let first = input.tokens[0].clone();
+        let rest = input.tokens.into_iter().skip(1).collect();
+        Ok((Tokens::new(rest), first))
+    }
+}
+
+pub fn tokensat(pred: &dyn Fn(&Token) -> bool) -> impl Fn(Tokens) -> IResult<Tokens, Token> + '_ {
+    move |input: Tokens| {
+        let parse_res = anytoken(input.clone())?;
+        if pred(&(parse_res.1)) {
+            Ok(parse_res)
+        } else {
+            combinator::fail(input)
+        }
+    }
+}
