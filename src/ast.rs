@@ -8,8 +8,6 @@ pub enum AST {
     Let(Vec<Def>, Box<AST>),
     Map(Vec<Id>, Box<AST>),
     App(Box<AST>, Vec<AST>),
-    IdApp(Id, Vec<AST>),
-    PrimApp(Prim, Vec<AST>),
     UnopApp(Unop, Box<AST>),
     BinopApp(Binop, Box<AST>, Box<AST>),
 }
@@ -35,7 +33,7 @@ pub enum Binop {
     And, Or,
 }
 
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, Copy, PartialEq, Clone)]
 pub enum Prim {
     NumberQ, FunctionQ, ListQ, EmptyQ, ConsQ,
     Cons, First, Rest,
